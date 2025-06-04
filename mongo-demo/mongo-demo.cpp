@@ -21,7 +21,7 @@
 
 #define BUILDER_STREAM 0
 #define INSERT_MANY 0
-#define FIND_ALL 0
+#define FIND_ALL 1
 #define FIND_ONE 0
 #define ENABLE_APM 0
 
