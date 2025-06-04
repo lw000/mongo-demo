@@ -20,7 +20,7 @@
 #include <mongocxx/options/apm.hpp>
 
 #define BUILDER_STREAM 0
-#define INSERT_MANY 0
+#define INSERT_MANY 1
 #define FIND_ALL 1
 #define FIND_ONE 0
 #define ENABLE_APM 0
@@ -62,22 +62,22 @@ int main() {
             std::cout << std::endl;
         }
         });
+ 
 #endif // ENABLE_APM
-
     // 创建客户端选项
     mongocxx::options::client client_opts;
     client_opts.apm_opts(apm_opts);
 
     mongocxx::pool pool{ uri, client_opts };
 
-#if 1
+#if 0
     auto client = pool.acquire();
 #else
     mongocxx::client client(uri);
-#endif // 1
+#endif // 0
 
     auto db = client["logs"];
-    auto collection = db["collector-sevice"];
+    auto collection = db["collector-service"];
 
     try
     {
@@ -138,9 +138,9 @@ int main() {
         auto cursors = collection.indexes().list();
         for (auto& cursor : cursors)
         {
-            //std::cout << cursor << std::endl;
+            std::cout << bsoncxx::to_json(cursor) << std::endl;
         }
-#if 0
+#if 1
         auto index_specification = make_document(kvp("age", 1));
         auto result = collection.create_index(index_specification.view());
         std::cout << "Index created: " << bsoncxx::to_json(result) << std::endl;
@@ -185,7 +185,7 @@ int main() {
             }
 #else
             std::vector<bsoncxx::document::value> docs;
-            const auto INSERT_NUM = 5000;
+            const auto INSERT_NUM = 1000;
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
