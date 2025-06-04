@@ -20,9 +20,10 @@
 #include <mongocxx/options/apm.hpp>
 
 #define BUILDER_STREAM 0
-#define INSERT_MANY 1
-#define FIND_ALL 1
+#define INSERT_MANY 0
+#define FIND_ALL 0
 #define FIND_ONE 0
+#define ENABLE_APM 0
 
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
@@ -36,6 +37,8 @@ int main() {
 
     // 配置APM选项
     mongocxx::options::apm apm_opts;
+
+#if ENABLE_APM
     apm_opts.on_command_started([](const mongocxx::events::command_started_event& event) {
         auto cmd = event.command();
         auto cmd_name = cmd.begin()->key();
@@ -47,7 +50,7 @@ int main() {
             std::cout << "  Command: " << bsoncxx::to_json(cmd) << "\n";
             std::cout << std::endl;
         }
-    });
+        });
 
     apm_opts.on_command_succeeded([](const mongocxx::events::command_succeeded_event& event) {
         auto cmd_name = event.command_name();
@@ -58,14 +61,14 @@ int main() {
             std::cout << "  Response: " << bsoncxx::to_json(event.reply()) << "\n";
             std::cout << std::endl;
         }
-    });
+        });
+#endif // ENABLE_APM
 
     // 创建客户端选项
     mongocxx::options::client client_opts;
     client_opts.apm_opts(apm_opts);
 
     mongocxx::pool pool{ uri, client_opts };
-
 
 #if 1
     auto client = pool.acquire();
@@ -82,9 +85,9 @@ int main() {
 
         //collection.delete_many({});
 
-        std::cout << "count_documents: " << collection.count_documents({}) << std::endl;
+        //std::cout << "count_documents: " << collection.count_documents({}) << std::endl;
 
-        std::cout << "estimated_document_count: " << collection.estimated_document_count({}) << std::endl;
+        //std::cout << "estimated_document_count: " << collection.estimated_document_count({}) << std::endl;
 
 #if 0
         auto stream = collection.watch();
@@ -249,6 +252,27 @@ int main() {
             //}
         }
 #endif // FIND_ALL
+
+#if 0
+        // 创建投影（只返回 name 和 email 字段）
+        auto projection = bsoncxx::builder::stream::document{}
+            << "title" << 1
+            << "age" << 1
+            << "_id" << 0  // 排除 _id 字段
+            << bsoncxx::builder::stream::finalize;
+
+        // 带投影的查询
+        auto options = mongocxx::options::find{};
+        options.projection(projection.view());
+
+        auto cursor = collection.find({}, options);
+
+        for (auto&& doc : cursor) {
+            std::cout << "title: " << doc["title"].get_string().value <<
+                "age: " << doc["age"].get_int32().value << std::endl;
+        }
+#endif // 0
+
     }
     catch (const mongocxx::exception& e)
     {
