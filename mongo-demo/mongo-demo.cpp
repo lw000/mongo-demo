@@ -15,6 +15,10 @@
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 
+#include <mongocxx/events/command_started_event.hpp>
+#include <mongocxx/events/command_succeeded_event.hpp>
+#include <mongocxx/options/apm.hpp>
+
 #define BUILDER_STREAM 0
 #define INSERT_MANY 1
 #define FIND_ALL 1
@@ -29,7 +33,40 @@ using bsoncxx::builder::stream::finalize;
 int main() {
     mongocxx::instance instance;
     mongocxx::uri uri("mongodb://localhost:27017/");
-    mongocxx::pool pool{ uri };
+
+    // 配置APM选项
+    mongocxx::options::apm apm_opts;
+    apm_opts.on_command_started([](const mongocxx::events::command_started_event& event) {
+        auto cmd = event.command();
+        auto cmd_name = cmd.begin()->key();
+
+        // 监控写入命令
+        if (cmd_name == "insert" || cmd_name == "update" || cmd_name == "delete") {
+            std::cout << "Write command started: " << cmd_name << "\n";
+            std::cout << "  Database: " << event.database_name() << "\n";
+            std::cout << "  Command: " << bsoncxx::to_json(cmd) << "\n";
+            std::cout << std::endl;
+        }
+    });
+
+    apm_opts.on_command_succeeded([](const mongocxx::events::command_succeeded_event& event) {
+        auto cmd_name = event.command_name();
+        auto duration = event.duration();
+
+        if (cmd_name == "insert" || cmd_name == "update" || cmd_name == "delete") {
+            std::cout << "Write command succeeded: " << cmd_name << " in " << duration << "ns\n";
+            std::cout << "  Response: " << bsoncxx::to_json(event.reply()) << "\n";
+            std::cout << std::endl;
+        }
+    });
+
+    // 创建客户端选项
+    mongocxx::options::client client_opts;
+    client_opts.apm_opts(apm_opts);
+
+    mongocxx::pool pool{ uri, client_opts };
+
+
 #if 1
     auto client = pool.acquire();
 #else
