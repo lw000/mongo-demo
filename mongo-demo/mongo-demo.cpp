@@ -78,7 +78,7 @@ int main() {
 
     try
     {
-        db.run_command(bsoncxx::from_json(R"({"ping":1})"));
+        //db.run_command(bsoncxx::from_json(R"({"ping":1})"));
 
         //collection.delete_many({});
 
@@ -182,7 +182,7 @@ int main() {
             }
 #else
             std::vector<bsoncxx::document::value> docs;
-            const auto INSERT_NUM = 1000;
+            const auto INSERT_NUM = 5000;
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
