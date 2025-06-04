@@ -8,21 +8,34 @@
 #include <mongocxx/exception/exception.hpp>
 #include <bsoncxx/builder/stream/document.hpp>
 #include <mongocxx/client.hpp>
+#include <mongocxx/pool.hpp>
 #include <mongocxx/instance.hpp>
 #include <bsoncxx/json.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
 
+#define BUILDER_STREAM 0
 #define INSERT_MANY 1
+#define FIND_ALL 1
+#define FIND_ONE 0
 
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
 
+using bsoncxx::builder::stream::document;
+using bsoncxx::builder::stream::finalize;
+
 int main() {
     mongocxx::instance instance;
     mongocxx::uri uri("mongodb://localhost:27017/");
+    mongocxx::pool pool{ uri };
+#if 1
+    auto client = pool.acquire();
+#else
     mongocxx::client client(uri);
+#endif // 1
+
     auto db = client["logs"];
     auto collection = db["collector-sevice"];
 
@@ -30,7 +43,7 @@ int main() {
     {
         db.run_command(bsoncxx::from_json(R"({"ping":1})"));
 
-        collection.delete_many({});
+        //collection.delete_many({});
 
         std::cout << "count_documents: " << collection.count_documents({}) << std::endl;
 
@@ -82,6 +95,17 @@ int main() {
 #endif // INSERT_ONCE
         
 #if INSERT_MANY
+        auto cursors = collection.indexes().list();
+        for (auto& cursor : cursors)
+        {
+            //std::cout << cursor << std::endl;
+        }
+#if 0
+        auto index_specification = make_document(kvp("age", 1));
+        auto result = collection.create_index(index_specification.view());
+        std::cout << "Index created: " << bsoncxx::to_json(result) << std::endl;
+#endif // 0
+
         auto repeat = 0;
         do
         {
@@ -111,16 +135,26 @@ int main() {
             //    "device_name" : "Mock"
             //}
 
+#if BUILDER_STREAM
+            std::vector<bsoncxx::document::view> docs;
+            const auto INSERT_NUM = 1000;
+            docs.reserve(INSERT_NUM);
+            for (auto i = 0; i < INSERT_NUM; i++)
+            {
+                docs.emplace_back(document{} << "title" << "The Shawshank Redemption" << "age" << i + 10 << finalize);
+            }
+#else
             std::vector<bsoncxx::document::value> docs;
-            const auto INSERT_NUM = 10000;
+            const auto INSERT_NUM = 1000;
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
                 docs.emplace_back(make_document(
-                    kvp("title", "The Shawshank Redemption - " + std::to_string(i)),
-                    kvp("age", std::to_string(i+10))
+                    kvp("title", "The Shawshank Redemption"),
+                    kvp("age", i + 10)
                 ));
             }
+#endif // 0
 
             auto start = std::chrono::steady_clock::now();
 
@@ -140,16 +174,44 @@ int main() {
 
 #endif // INSERT_MANY
   
+#if FIND_ONCE
         for (auto i = 0; i < 100; i++)
         {
-            auto result = collection.find_one(make_document(kvp("title", "The Shawshank Redemption - " + std::to_string(i))));
+            auto start = std::chrono::steady_clock::now();
+            auto result = collection.find_one(make_document(kvp("age", i + 10)));
+            auto end = std::chrono::steady_clock::now();
+            auto mixed_time = std::chrono::duration<double>(end - start).count() * 1000;
+
             if (result) {
-                std::cout << bsoncxx::to_json(*result) << std::endl;
+                std::cout << bsoncxx::to_json(*result) << "消耗时间: " << mixed_time << std::endl;
             }
             else {
                 std::cout << "No result found" << std::endl;
             }
         }
+#endif // FIND_ONCE
+
+#if FIND_ALL
+        for (auto i = 0; i < 100; i++)
+        {
+            auto start = std::chrono::steady_clock::now();
+            auto results = collection.find(make_document(kvp("age", i + 10)));
+            auto end = std::chrono::steady_clock::now();
+            auto mixed_time = std::chrono::duration<double>(end - start).count() * 1000;
+            std::cout << "消耗时间: " << mixed_time << std::endl;
+            for (auto&& result : results)
+            {
+                std::cout << bsoncxx::to_json(result) << std::endl;
+            }
+
+            //if (result) {
+            //    std::cout << bsoncxx::to_json(result) << "消耗时间: " << mixed_time << std::endl;
+            //}
+            //else {
+            //    std::cout << "No result found" << std::endl;
+            //}
+        }
+#endif // FIND_ALL
     }
     catch (const mongocxx::exception& e)
     {
