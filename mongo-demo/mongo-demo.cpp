@@ -13,7 +13,8 @@
 #include <mongocxx/client.hpp>
 #include <mongocxx/instance.hpp>
 #include <mongocxx/uri.hpp>
-#if 1
+
+#define INSERT_MANY 1
 
 using bsoncxx::builder::basic::kvp;
 using bsoncxx::builder::basic::make_document;
@@ -31,22 +32,37 @@ int main() {
 
         collection.delete_many({});
 
-        //std::vector<bsoncxx::document::view> docs;
+        std::cout << "count_documents: " << collection.count_documents({}) << std::endl;
 
+        std::cout << "estimated_document_count: " << collection.estimated_document_count({}) << std::endl;
+
+#if 0
+        auto stream = collection.watch();
+        while (true) {
+            for (const auto& event : stream) {
+                std::cout << bsoncxx::to_json(event) << std::endl;
+            }
+        }
+#endif // 0
+
+#if 0
+        //std::vector<bsoncxx::document::view> docs;
         //docs.push_back(make_document(kvp("title", "The Shawshank Redemption-1")));
         //docs.push_back(make_document(kvp("title", "The Shawshank Redemption-2")));
         //docs.push_back(make_document(kvp("title", "The Shawshank Redemption-3")));
         //docs.push_back(make_document(kvp("title", "The Shawshank Redemption-4")));
         //docs.push_back(make_document(kvp("title", "The Shawshank Redemption-5")));
-#if 0
+
         for (auto i : { 1 })
         {
             auto doc = bsoncxx::builder::stream::document{};
             doc << "title" << "The Shawshank Redemption" << bsoncxx::builder::stream::finalize;
             docs.push_back(doc); ;
         }
+
 #endif // 0
 
+#if INSERT_ONCE
         if (collection.count_documents({}) == 0) {
 
             for (auto i = 0; i < 1000; i++)
@@ -63,7 +79,9 @@ int main() {
                 }
             }
         }
+#endif // INSERT_ONCE
         
+#if INSERT_MANY
         auto repeat = 0;
         do
         {
@@ -98,7 +116,10 @@ int main() {
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
-                docs.emplace_back(make_document(kvp("title", "The Shawshank Redemption - " + std::to_string(i))));
+                docs.emplace_back(make_document(
+                    kvp("title", "The Shawshank Redemption - " + std::to_string(i)),
+                    kvp("age", std::to_string(i+10))
+                ));
             }
 
             auto start = std::chrono::steady_clock::now();
@@ -116,9 +137,12 @@ int main() {
                 std::cerr << "批量插入失败!" << std::endl;
             }
         } while (repeat++ < 1000);
-        
+
+#endif // INSERT_MANY
+  
+        for (auto i = 0; i < 100; i++)
         {
-            auto result = collection.find_one(make_document(kvp("title", "The Shawshank Redemption - 1")));
+            auto result = collection.find_one(make_document(kvp("title", "The Shawshank Redemption - " + std::to_string(i))));
             if (result) {
                 std::cout << bsoncxx::to_json(*result) << std::endl;
             }
@@ -135,61 +159,3 @@ int main() {
     
     return EXIT_SUCCESS;
 }
-
-#else
-
-int main() {
-    // 初始化驱动
-    mongocxx::instance inst{};
-    // 连接 MongoDB
-    mongocxx::client conn{ mongocxx::uri{"mongodb://localhost:27017/"} };
-    // 选择数据库和集合
-    auto collection = conn["logs"]["collector-sevice"];
-
-    // 创建待插入的文档列表
-    std::vector<bsoncxx::document::view> docs;
-    for (int i = 0; i < 100; ++i) {
-        // 使用流式构建器创建文档
-        auto doc = bsoncxx::builder::stream::document{}
-            << "name" << "user_" + std::to_string(i)
-            //<< "age" << i % 50 + 10
-            //<< "timestamp" << bsoncxx::types::b_date{ std::chrono::system_clock::now() }
-            << bsoncxx::builder::stream::finalize;
-
-        docs.push_back(doc.view());
-    }
-
-    try
-    {
-        auto result = collection.insert_one(docs.front());
-        // 检查结果
-        if (result) {
-            std::cout << "成功插入 " << std::endl;
-        }
-        else {
-            std::cerr << "批量插入失败!" << std::endl;
-        }
-#if 0
-        // 执行批量插入（默认有序）
-        auto result = collection.insert_many(docs);
-
-        // 检查结果
-        if (result) {
-            std::cout << "成功插入 " << result->inserted_count() << " 条数据" << std::endl;
-        }
-        else {
-            std::cerr << "批量插入失败!" << std::endl;
-        }
-#endif // 0
-
-
-    }
-    catch (std::exception& e)
-    {
-        std::cerr << e.what() << std::endl;
-    }
-
-    return 0;
-}
-
-#endif // 1
