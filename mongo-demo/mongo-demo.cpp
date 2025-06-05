@@ -87,12 +87,6 @@ static bool index_exists(mongocxx::v_noabi::collection& collection, bsoncxx::doc
 
 int main() {
     mongocxx::instance instance;
-    mongocxx::uri uri("mongodb://localhost:27017?"
-        "minPoolSize=10"
-        "&maxPoolSize=100"
-        "&maxIdleTimeMS=300000"
-        "&connectTimeoutMS=3000"
-        "&socketTimeoutMS=10000");
 
     // 配置APM选项
     mongocxx::options::apm apm_opts;
@@ -129,9 +123,19 @@ int main() {
     mongocxx::options::client client_opts;
     client_opts.apm_opts(apm_opts);
 
+    mongocxx::options::pool pool_opts;
+
+    mongocxx::uri uri("mongodb://localhost:27017?"
+        "minPoolSize=10"
+        "&maxPoolSize=100"
+        "&maxIdleTimeMS=300000"
+        "&connectTimeoutMS=3000"
+        "&socketTimeoutMS=10000");
+
     mongocxx::pool pool{ uri, client_opts };
     auto client = pool.acquire();
 #else
+    mongocxx::uri uri("mongodb://localhost:27017");
     mongocxx::client client(uri);
 #endif // 0
 
