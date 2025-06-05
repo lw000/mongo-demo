@@ -60,6 +60,24 @@ static auto get_page(mongocxx::v_noabi::collection& collection, int page, int pa
     return collection.find(filter, options);
 }
 
+static bool index_exists(mongocxx::v_noabi::collection& collection, const std::string& field, int order = 1)
+{
+    auto indexKeys = document{} << field << order << finalize;
+
+    auto cursor = collection.list_indexes();
+
+    for (auto&& index_doc : cursor)
+    {
+        auto key = index_doc["key"].get_document().value;
+        if (key == indexKeys.view())
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 int main() {
     mongocxx::instance instance;
     mongocxx::uri uri("mongodb://localhost:27017/");
@@ -166,9 +184,13 @@ int main() {
         }
 
 #if CREATER_INDEX
-        auto index_specification = make_document(kvp("point_name", 1));
-        auto result = collection.create_index(index_specification.view());
-        std::cout << "Index created: " << bsoncxx::to_json(result) << std::endl;
+        if (!index_exists(collection, "point_name", 1))
+        {
+            auto index_specification = make_document(kvp("point_name", 1));
+            auto result = collection.create_index(index_specification.view());
+            std::cout << "Index created: " << bsoncxx::to_json(result) << std::endl;
+        }
+
 #endif // 0
 
 #if INSERT_MANY
