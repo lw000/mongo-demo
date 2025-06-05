@@ -123,13 +123,13 @@ int main() {
         });
  
 #endif // ENABLE_APM
+
+#if 0
     // 创建客户端选项
     mongocxx::options::client client_opts;
     client_opts.apm_opts(apm_opts);
 
     mongocxx::pool pool{ uri, client_opts };
-
-#if 1
     auto client = pool.acquire();
 #else
     mongocxx::client client(uri);
