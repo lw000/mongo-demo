@@ -5,12 +5,12 @@
 #include <vector>
 #include <exception>
 #include <chrono>
+#include <thread>
 
 #include <mongocxx/exception/exception.hpp>
 #include <mongocxx/exception/query_exception.hpp>
 #include <mongocxx/exception/operation_exception.hpp>
 
-#include <bsoncxx/builder/stream/document.hpp>
 #include <mongocxx/client.hpp>
 #include <mongocxx/pool.hpp>
 #include <mongocxx/instance.hpp>
@@ -22,6 +22,8 @@
 #include <mongocxx/events/command_started_event.hpp>
 #include <mongocxx/events/command_succeeded_event.hpp>
 #include <mongocxx/options/apm.hpp>
+
+#include <bsoncxx/builder/stream/document.hpp>
 
 #define CREATER_INDEX 1
 #define BUILDER_STREAM 0
@@ -60,19 +62,24 @@ static auto get_page(mongocxx::v_noabi::collection& collection, int page, int pa
     return collection.find(filter, options);
 }
 
-static bool index_exists(mongocxx::v_noabi::collection& collection, const std::string& field, int order = 1)
+static bool index_exists(mongocxx::v_noabi::collection& collection, bsoncxx::document::view_or_value expected_key)
 {
-    auto indexKeys = document{} << field << order << finalize;
-
-    auto cursor = collection.list_indexes();
-
-    for (auto&& index_doc : cursor)
+    try
     {
-        auto key = index_doc["key"].get_document().value;
-        if (key == indexKeys.view())
+        auto cursor = collection.list_indexes();
+
+        for (auto&& index_doc : cursor)
         {
-            return true;
+            auto key = index_doc["key"].get_document().value;
+            if (key == expected_key.view())
+            {
+                return true;
+            }
         }
+    }
+    catch (const mongocxx::exception& e)
+    {
+        std::cerr << "Error listing indexes: " << e.what() << std::endl;
     }
 
     return false;
@@ -80,7 +87,12 @@ static bool index_exists(mongocxx::v_noabi::collection& collection, const std::s
 
 int main() {
     mongocxx::instance instance;
-    mongocxx::uri uri("mongodb://localhost:27017/");
+    mongocxx::uri uri("mongodb://localhost:27017?"
+        "minPoolSize=10"
+        "&maxPoolSize=100"
+        "&maxIdleTimeMS=300000"
+        "&connectTimeoutMS=3000"
+        "&socketTimeoutMS=10000");
 
     // 配置APM选项
     mongocxx::options::apm apm_opts;
@@ -117,7 +129,7 @@ int main() {
 
     mongocxx::pool pool{ uri, client_opts };
 
-#if 0
+#if 1
     auto client = pool.acquire();
 #else
     mongocxx::client client(uri);
@@ -184,7 +196,8 @@ int main() {
         }
 
 #if CREATER_INDEX
-        if (!index_exists(collection, "point_name", 1))
+        auto keys = document{} << "point_name" << 1 << finalize;
+        if (!index_exists(collection, keys.view()))
         {
             auto index_specification = make_document(kvp("point_name", 1));
             auto result = collection.create_index(index_specification.view());
@@ -365,7 +378,7 @@ int main() {
                 auto No = 0;
                 for (auto&& doc : cursor)
                 {
-                    std::cout << "page." << page << "    " << "No." << ++No << "    "
+                    std::cout << "No." << page << "." << ++No << "    "
                         << "data: " << bsoncxx::to_json(doc) << std::endl;
 #if 0
                     std::cout << "page." << page << "    " << "No." << ++No << "    "
@@ -398,5 +411,18 @@ int main() {
         return EXIT_FAILURE;
     }
     
+#if 0
+    auto monitor_pool = [&pool](mongocxx::pool& pool) {
+
+        auto stats = pool.statistics();
+        std::cout << "当前连接数: " << stats.connections << std::endl;
+        std::cout << "可用连接数: " << stats.available_connections << std::endl;
+        std::cout << "等待线程数: " << stats.waiting_threads << std::endl;
+        };
+
+    std::thread t(monitor_pool);
+    t.join();
+#endif // 0
+
     return EXIT_SUCCESS;
 }
