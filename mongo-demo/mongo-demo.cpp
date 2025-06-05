@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <exception>
+#include <chrono>
 
 #include <mongocxx/exception/exception.hpp>
 #include <bsoncxx/builder/stream/document.hpp>
@@ -19,9 +20,10 @@
 #include <mongocxx/events/command_succeeded_event.hpp>
 #include <mongocxx/options/apm.hpp>
 
+#define CREATER_INDEX 1
 #define BUILDER_STREAM 0
 #define INSERT_MANY 1
-#define FIND_ALL 1
+#define FIND_ALL 0
 #define FIND_ONE 0
 #define ENABLE_APM 0
 
@@ -30,6 +32,17 @@ using bsoncxx::builder::basic::make_document;
 
 using bsoncxx::builder::stream::document;
 using bsoncxx::builder::stream::finalize;
+
+static auto get_page(mongocxx::v_noabi::collection& collection, int page, int page_size, bsoncxx::document::view_or_value filter) {
+    auto options = mongocxx::options::find{};
+    options.skip((page - 1) * page_size);
+    options.limit(page_size);
+    options.sort(bsoncxx::builder::stream::document{}
+        << "created_at" << -1
+        << bsoncxx::builder::stream::finalize);
+
+    return collection.find(filter, options);
+}
 
 int main() {
     mongocxx::instance instance;
@@ -83,7 +96,7 @@ int main() {
     {
         //db.run_command(bsoncxx::from_json(R"({"ping":1})"));
 
-        //collection.delete_many({});
+        collection.delete_many({});
 
         //std::cout << "count_documents: " << collection.count_documents({}) << std::endl;
 
@@ -116,37 +129,39 @@ int main() {
 #endif // 0
 
 #if INSERT_ONCE
-        if (collection.count_documents({}) == 0) {
+        for (auto i = 0; i < 1000; i++)
+        {
+            // 如果没有数据，先插入一些
+            auto result = collection.insert_one(make_document(kvp("title", "The Shawshank Redemption - " + std::to_string(i))));
 
-            for (auto i = 0; i < 1000; i++)
-            {
-                // 如果没有数据，先插入一些
-                auto result = collection.insert_one(make_document(kvp("title", "The Shawshank Redemption - " + std::to_string(i))));
-
-                // 检查结果
-                if (result) {
-                    std::cout << "成功插入 " << result->result().inserted_count() << " 条数据" << std::endl;
-                }
-                else {
-                    std::cerr << "批量插入失败!" << std::endl;
-                }
+            // 检查结果
+            if (result) {
+                std::cout << "成功插入 " << result->result().inserted_count() << " 条数据" << std::endl;
+            }
+            else {
+                std::cerr << "批量插入失败!" << std::endl;
             }
         }
 #endif // INSERT_ONCE
         
-#if INSERT_MANY
+
         auto cursors = collection.indexes().list();
         for (auto& cursor : cursors)
         {
             std::cout << bsoncxx::to_json(cursor) << std::endl;
         }
-#if 1
-        auto index_specification = make_document(kvp("age", 1));
+
+#if CREATER_INDEX
+        auto index_specification = make_document(kvp("point_name", 1));
         auto result = collection.create_index(index_specification.view());
         std::cout << "Index created: " << bsoncxx::to_json(result) << std::endl;
 #endif // 0
 
+#if INSERT_MANY
+
+        const auto INSERT_NUM = 10;
         auto repeat = 0;
+        auto counter = 0;
         do
         {
             //{
@@ -185,13 +200,26 @@ int main() {
             }
 #else
             std::vector<bsoncxx::document::value> docs;
-            const auto INSERT_NUM = 1000;
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
+                std::string point_name("sin-tag-" + std::to_string(counter++));
                 docs.emplace_back(make_document(
-                    kvp("title", "The Shawshank Redemption"),
-                    kvp("age", i + 10)
+                    kvp("point_name", point_name),
+                    kvp("identifier_alias", point_name),
+                    kvp("point_path", "root/workshop_A/Mock"),
+                    kvp("type_name", "LLL"),
+                    kvp("priority_name", "Medium"),
+                    kvp("alarm_desc", point_name + " - LLL"),
+                    kvp("alarm_status", i % 10 == 0 ? 1 : 0),
+                    kvp("alarm_value", "-58.707"),
+                    kvp("alarm_time", 1748510196625),
+                    kvp("operate_type", 1),
+                    kvp("operator", "SYSTEM"),
+                    kvp("operate_time", 1748510196625),
+                    kvp("category_id", 1),
+                    kvp("create_time", bsoncxx::types::b_date(std::chrono::system_clock::now())),
+                    kvp("device_name", "Mock")
                 ));
             }
 #endif // 0
@@ -210,12 +238,12 @@ int main() {
             else {
                 std::cerr << "批量插入失败!" << std::endl;
             }
-        } while (repeat++ < 1000);
+        } while (repeat++ < 10);
 
 #endif // INSERT_MANY
   
 #if FIND_ONCE
-        for (auto i = 0; i < 100; i++)
+        for (auto i = 0; i < 10; i++)
         {
             auto start = std::chrono::steady_clock::now();
             auto result = collection.find_one(make_document(kvp("age", i + 10)));
@@ -232,10 +260,11 @@ int main() {
 #endif // FIND_ONCE
 
 #if FIND_ALL
-        for (auto i = 0; i < 100; i++)
+        for (auto i = 0; i < 10; i++)
         {
             auto start = std::chrono::steady_clock::now();
-            auto results = collection.find(make_document(kvp("age", i + 10)));
+            auto filter = make_document(kvp("point_name", "sin-tag-" + std::to_string(i)));
+            auto results = collection.find({ filter });
             auto end = std::chrono::steady_clock::now();
             auto mixed_time = std::chrono::duration<double>(end - start).count() * 1000;
             std::cout << "消耗时间: " << mixed_time << std::endl;
@@ -254,24 +283,61 @@ int main() {
 #endif // FIND_ALL
 
 #if 0
-        // 创建投影（只返回 name 和 email 字段）
-        auto projection = bsoncxx::builder::stream::document{}
-            << "title" << 1
-            << "age" << 1
-            << "_id" << 0  // 排除 _id 字段
-            << bsoncxx::builder::stream::finalize;
+        {
+            auto filter = bsoncxx::builder::stream::document{}
+                << "alarm_status" << 0
+                << bsoncxx::builder::stream::finalize;
 
-        // 带投影的查询
-        auto options = mongocxx::options::find{};
-        options.projection(projection.view());
+            // 创建投影（只返回需要的字段）
+            auto projection = bsoncxx::builder::stream::document{}
+                << "point_name" << 1
+                << "point_path" << 1
+                << "type_name" << 1
+                << "alarm_status" << 1
+                << "_id" << 0  // 排除 _id 字段
+                << bsoncxx::builder::stream::finalize;
 
-        auto cursor = collection.find({}, options);
+            // 带投影的查询
+            auto options = mongocxx::options::find{};
+            options.projection(projection.view());
 
-        for (auto&& doc : cursor) {
-            std::cout << "title: " << doc["title"].get_string().value <<
-                "age: " << doc["age"].get_int32().value << std::endl;
+            auto cursor = collection.find({ filter }, options);
+
+            auto index = 0;
+            for (auto&& doc : cursor)
+            {
+                std::cout << ++index << " point_name: " << doc["point_name"].get_string().value << " "
+                    << "point_path: " << doc["point_path"].get_string().value << " "
+                    << "type_name: " << doc["type_name"].get_string().value << " "
+                    << "alarm_status: " << doc["alarm_status"].get_int32().value << " "
+                    << std::endl;
+            }
         }
+        
 #endif // 0
+
+        {
+            auto filter = bsoncxx::builder::stream::document{}
+                << "alarm_status" << 0
+                << bsoncxx::builder::stream::finalize;
+            int page = 1;
+            do
+            {
+                auto cursor = get_page(collection, page, 10, { filter });
+
+                auto index = 0;
+                for (auto&& doc : cursor)
+                {
+                    std::cout << "page: " << page << "    " << "index: " << ++index << "    "
+                        << "point_name: " << doc["point_name"].get_string().value << " "
+                        << "point_path: " << doc["point_path"].get_string().value << " "
+                        << "type_name: " << doc["type_name"].get_string().value << " "
+                        << "alarm_status: " << doc["alarm_status"].get_int32().value << " "
+                        << std::endl;
+                }
+            } while (page++ <= 10);
+            
+        }
 
     }
     catch (const mongocxx::exception& e)
