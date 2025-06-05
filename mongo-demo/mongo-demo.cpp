@@ -40,9 +40,22 @@ static auto get_page(mongocxx::v_noabi::collection& collection, int page, int pa
     auto options = mongocxx::options::find{};
     options.skip((page - 1) * page_size);
     options.limit(page_size);
+
     //options.sort(bsoncxx::builder::stream::document{}
     //    << "point_name" << 1
     //    << bsoncxx::builder::stream::finalize);
+    // 
+    // 创建投影（只返回需要的字段）
+    auto projection = bsoncxx::builder::stream::document{}
+        << "point_name" << 1
+        << "point_path" << 1
+        << "type_name" << 1
+        << "alarm_status" << 1
+        << "_id" << 0  // 排除 _id 字段
+        << bsoncxx::builder::stream::finalize;
+
+    // 带投影的查询
+    options.projection(projection.view());
 
     return collection.find(filter, options);
 }
@@ -162,7 +175,7 @@ int main() {
 
         collection.delete_many({});
 
-        const auto INSERT_NUM = 10;
+        const auto INSERT_NUM = 10000;
         auto repeat = 0;
         auto counter = 0;
         do
@@ -195,7 +208,6 @@ int main() {
 
 #if BUILDER_STREAM
             std::vector<bsoncxx::document::view> docs;
-            const auto INSERT_NUM = 1000;
             docs.reserve(INSERT_NUM);
             for (auto i = 0; i < INSERT_NUM; i++)
             {
@@ -241,7 +253,7 @@ int main() {
             else {
                 std::cerr << "批量插入失败!" << std::endl;
             }
-        } while (repeat++ < 10);
+        } while (repeat++ < 100);
 
 #endif // INSERT_MANY
   
@@ -306,10 +318,10 @@ int main() {
 
             auto cursor = collection.find({ filter }, options);
 
-            auto index = 0;
+            auto No = 0;
             for (auto&& doc : cursor)
             {
-                std::cout << ++index << " point_name: " << doc["point_name"].get_string().value << " "
+                std::cout << ++No << " point_name: " << doc["point_name"].get_string().value << " "
                     << "point_path: " << doc["point_path"].get_string().value << " "
                     << "type_name: " << doc["type_name"].get_string().value << " "
                     << "alarm_status: " << doc["alarm_status"].get_int32().value << " "
@@ -328,16 +340,21 @@ int main() {
             {
                 auto cursor = get_page(collection, page, 10, { filter });
 
-                auto index = 0;
+                auto No = 0;
                 for (auto&& doc : cursor)
                 {
-                    std::cout << "page: " << page << "    " << "index: " << ++index << "    "
+                    std::cout << "page." << page << "    " << "No." << ++No << "    "
+                        << "data: " << bsoncxx::to_json(doc) << std::endl;
+#if 0
+                    std::cout << "page." << page << "    " << "No." << ++No << "    "
                         << "point_name: " << doc["point_name"].get_string().value << " "
                         << "point_path: " << doc["point_path"].get_string().value << " "
                         << "type_name: " << doc["type_name"].get_string().value << " "
                         << "alarm_status: " << doc["alarm_status"].get_int32().value << " "
                         << "create_time: " << doc["create_time"].get_date().to_int64() << " "
                         << std::endl;
+#endif // 0
+
                 }
             } while (page++ <= 10);
             
